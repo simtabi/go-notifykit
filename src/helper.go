@@ -22,8 +22,11 @@ const helperVersion = "1.0.0"
 // helperBackend posts through "<AppName> Notifier.app", which this package
 // assembles from the embedded notifier (helperBinary) and signs ad hoc.
 type helperBackend struct {
-	n   *Notifier
-	exe string
+	n        *Notifier
+	app      string // the bundle, for re-registering it
+	exe      string
+	register signer
+	fallback Backend // osascript, for when macOS refuses the app
 }
 
 func (*helperBackend) Name() string { return "helper" }
@@ -44,7 +47,11 @@ func newHelperBackend(n *Notifier) (Backend, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &helperBackend{n: n, exe: filepath.Join(app, "Contents", "MacOS", "notifier")}, nil
+	return &helperBackend{
+		n: n, app: app, exe: filepath.Join(app, "Contents", "MacOS", "notifier"),
+		register: lsregister,
+		fallback: &cmdBackend{name: "osascript", run: run, build: func(nt Notification) (command, error) { return osascriptCmd(nt), nil }},
+	}, nil
 }
 
 type helperPayload struct {
@@ -53,23 +60,50 @@ type helperPayload struct {
 	Body     string `json:"body,omitempty"`
 	Group    string `json:"group,omitempty"`
 	Sound    bool   `json:"sound,omitempty"`
+	Image    string `json:"image,omitempty"`
+	Open     string `json:"open,omitempty"`
 }
 
+// Send posts through the helper app. When macOS answers "not allowed", the
+// usual cause is a bundle LaunchServices has not caught up with (a new or
+// moved app is refused without the user ever being asked), so the app is
+// registered again and the notification retried once. If macOS still refuses,
+// it is shown through osascript instead, which macOS attributes to Script
+// Editor, and ErrDenied is returned only when that fails too.
 func (h *helperBackend) Send(ctx context.Context, nt Notification) error {
 	group := nt.Group
 	if group != "" {
 		group = h.n.cfg.AppName + ":" + group
 	}
-	in, err := json.Marshal(helperPayload{Title: nt.Title, Subtitle: nt.Subtitle, Body: nt.Body, Group: group, Sound: nt.Sound})
+	in, err := json.Marshal(helperPayload{
+		Title: nt.Title, Subtitle: nt.Subtitle, Body: nt.Body, Group: group, Sound: nt.Sound,
+		Image: nt.Icon, Open: nt.Open,
+	})
 	if err != nil {
 		return err
 	}
 	err = runHelper(ctx, command{name: h.exe, stdin: in})
-	var ee *exitError
-	if errors.As(err, &ee) && ee.code == 3 {
-		return fmt.Errorf("%w: %s", ErrDenied, ee.msg)
+	if !notAllowed(err) {
+		return err
 	}
-	return err
+	if rerr := h.register(h.app); rerr != nil {
+		h.n.logf("re-registering the notifier app failed: %v", rerr)
+	} else if err = runHelper(ctx, command{name: h.exe, stdin: in}); !notAllowed(err) {
+		return err
+	}
+	h.n.logf("macOS does not allow notifications from the %s notifier app (System Settings > Notifications); falling back to osascript", h.n.cfg.AppName)
+	if ferr := h.fallback.Send(ctx, nt); ferr != nil {
+		var ee *exitError
+		errors.As(err, &ee)
+		return fmt.Errorf("%w: %s (osascript: %v)", ErrDenied, ee.msg, ferr)
+	}
+	return nil
+}
+
+// notAllowed is the notifier's exit status 3.
+func notAllowed(err error) bool {
+	var ee *exitError
+	return errors.As(err, &ee) && ee.code == 3
 }
 
 // runHelper runs the notifier without killing it at the deadline: on the
@@ -190,6 +224,14 @@ func ensureBundle(dir string, cfg Config, binary []byte, sign, register signer, 
 	return path, nil
 }
 
+// bundleID is Config.BundleID, else AppID+".notifier".
+func bundleID(cfg Config) string {
+	if cfg.BundleID != "" {
+		return cfg.BundleID
+	}
+	return cfg.AppID + ".notifier"
+}
+
 // infoPlist is the helper app's Info.plist. The banner shows the display
 // name; the bundle identifier is what System Settings > Notifications lists.
 func infoPlist(cfg Config, hasIcon bool) ([]byte, error) {
@@ -205,7 +247,7 @@ func infoPlist(cfg Config, hasIcon bool) ([]byte, error) {
 		{"CFBundleDevelopmentRegion", "en"},
 		{"CFBundleDisplayName", cfg.AppName},
 		{"CFBundleExecutable", "notifier"},
-		{"CFBundleIdentifier", cfg.AppID + ".notifier"},
+		{"CFBundleIdentifier", bundleID(cfg)},
 		{"CFBundleInfoDictionaryVersion", "6.0"},
 		{"CFBundleName", cfg.AppName},
 		{"CFBundlePackageType", "APPL"},
@@ -213,6 +255,10 @@ func infoPlist(cfg Config, hasIcon bool) ([]byte, error) {
 		{"CFBundleVersion", helperVersion},
 		{"LSMinimumSystemVersion", "11.0"},
 		{"NSUserNotificationAlertStyle", "banner"},
+	}
+	if self, err := selfExecutable(); err == nil {
+		// The one executable a click may run (see Notification.Open).
+		kv = append(kv, [2]string{"NotifyKitOpenPath", self})
 	}
 	if hasIcon {
 		kv = append(kv, [2]string{"CFBundleIconFile", "AppIcon"})

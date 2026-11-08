@@ -170,26 +170,85 @@ func TestRegisterFailureIsOnlyLogged(t *testing.T) {
 	}
 }
 
-func TestHelperSendPassesJSONAndMapsDenial(t *testing.T) {
+func TestHelperSendPassesJSON(t *testing.T) {
 	var got command
 	old := runHelper
 	t.Cleanup(func() { runHelper = old })
 	runHelper = func(_ context.Context, c command) error { got = c; return nil }
-	n, _ := New(Config{AppName: "sange", AppID: "com.sangehq.sange"})
+	n, _ := New(Config{AppName: "sange", AppID: "sh.sange.notify"})
 	h := &helperBackend{n: n, exe: "/x/notifier"}
-	if err := h.Send(context.Background(), Notification{Title: "t", Subtitle: "s", Body: "b", Group: "push", Sound: true}); err != nil {
+	nt := Notification{Title: "t", Subtitle: "s", Body: "b", Group: "push", Sound: true, Icon: "/s/images/a.png", Open: "http://127.0.0.1:7822/"}
+	if err := h.Send(context.Background(), nt); err != nil {
 		t.Fatal(err)
 	}
 	var p helperPayload
 	if err := json.Unmarshal(got.stdin, &p); err != nil || got.name != "/x/notifier" || len(got.args) != 0 {
 		t.Fatalf("ran %+v (%v)", got, err)
 	}
-	if p != (helperPayload{Title: "t", Subtitle: "s", Body: "b", Group: "sange:push", Sound: true}) {
+	want := helperPayload{Title: "t", Subtitle: "s", Body: "b", Group: "sange:push", Sound: true, Image: "/s/images/a.png", Open: "http://127.0.0.1:7822/"}
+	if p != want {
 		t.Fatalf("payload %+v", p)
 	}
-	runHelper = func(context.Context, command) error { return &exitError{code: 3, msg: "denied"} }
+}
+
+// "Not allowed" is usually a bundle LaunchServices has not caught up with: the
+// app is registered again and retried once, and only then shown through
+// osascript.
+func TestNotAllowedReregistersRetriesThenFallsBack(t *testing.T) {
+	old := runHelper
+	t.Cleanup(func() { runHelper = old })
+	n, _ := New(Config{AppName: "demo", AppID: "com.example.demo"})
+	setup := func(answers ...error) (*helperBackend, *int, *[]string, *Recorder) {
+		calls, regs, fb := 0, []string{}, &Recorder{}
+		runHelper = func(context.Context, command) error { e := answers[calls]; calls++; return e }
+		h := &helperBackend{n: n, app: "/s/demo Notifier.app", exe: "/x/notifier", fallback: fb,
+			register: func(p string) error { regs = append(regs, p); return nil }}
+		return h, &calls, &regs, fb
+	}
+	denied := &exitError{code: 3, msg: "Notifications are not allowed for this application"}
+
+	// Registered again, retried, and the retry is posted by the helper.
+	h, calls, regs, fb := setup(denied, nil)
+	if err := h.Send(context.Background(), Notification{Title: "t"}); err != nil || *calls != 2 || len(*regs) != 1 || (*regs)[0] != "/s/demo Notifier.app" || len(fb.Sent()) != 0 {
+		t.Fatalf("err %v, calls %d, registrations %q, fallback %d", err, *calls, *regs, len(fb.Sent()))
+	}
+	// Still refused: shown through the fallback instead, with no error.
+	h, calls, regs, fb = setup(denied, denied)
+	if err := h.Send(context.Background(), Notification{Title: "t"}); err != nil || *calls != 2 || len(*regs) != 1 || len(fb.Sent()) != 1 {
+		t.Fatalf("err %v, calls %d, registrations %d, fallback %d", err, *calls, len(*regs), len(fb.Sent()))
+	}
+	// Another failure is reported, not retried.
+	h, calls, _, fb = setup(&exitError{code: 1, msg: "boom"})
+	if err := h.Send(context.Background(), Notification{Title: "t"}); err == nil || *calls != 1 || len(fb.Sent()) != 0 {
+		t.Fatalf("err %v, calls %d, fallback %d", err, *calls, len(fb.Sent()))
+	}
+	// When the fallback fails too, the refusal is ErrDenied.
+	h, _, _, _ = setup(denied, denied)
+	h.fallback = failing{}
 	if err := h.Send(context.Background(), Notification{Title: "t"}); !errors.Is(err, ErrDenied) {
-		t.Fatalf("exit 3 gave %v, want ErrDenied", err)
+		t.Fatalf("err %v, want ErrDenied", err)
+	}
+}
+
+func TestPlistNamesTheBundleIDAndTheClickableExecutable(t *testing.T) {
+	old := selfExecutable
+	t.Cleanup(func() { selfExecutable = old })
+	selfExecutable = func() (string, error) { return "/opt/sange/bin/sange", nil }
+	plist, err := infoPlist(Config{AppName: "sange", AppID: "sh.sange.notify", BundleID: "sh.sange.notify"}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"<string>sh.sange.notify</string>", "<key>NotifyKitOpenPath</key>\n\t<string>/opt/sange/bin/sange</string>"} {
+		if !strings.Contains(string(plist), want) {
+			t.Errorf("Info.plist lacks %q", want)
+		}
+	}
+	if strings.Contains(string(plist), "sh.sange.notify.notifier") {
+		t.Error("BundleID did not replace the default")
+	}
+	plist, _ = infoPlist(Config{AppName: "x", AppID: "com.example.x"}, false)
+	if !strings.Contains(string(plist), "<string>com.example.x.notifier</string>") {
+		t.Error("the default bundle ID is not AppID.notifier")
 	}
 }
 

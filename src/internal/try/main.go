@@ -24,6 +24,8 @@ func main() {
 	group := flag.String("group", "try", "replace an earlier banner in this group")
 	backend := flag.String("backend", "", "force a backend: helper, terminal-notifier, osascript, notify-send, powershell")
 	id := flag.String("id", "com.simtabi.notifykit-try", "bundle ID; a new one makes macOS ask for permission afresh")
+	image := flag.String("image", "", "attach this image (absolute path to a PNG, JPEG or GIF)")
+	open := flag.String("open", "", "on click, open this local http(s) URL")
 	flag.Parse()
 
 	if *backend != "" {
@@ -39,7 +41,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
 	}
-	res, err := n.Send(context.Background(), notifykit.Notification{Title: *title, Subtitle: *subtitle, Body: *body, Group: *group, Sound: true})
+	res, err := n.Send(context.Background(), notifykit.Notification{Title: *title, Subtitle: *subtitle, Body: *body, Group: *group, Sound: true, Icon: *image, Open: *open})
 	switch {
 	case err != nil:
 		fmt.Fprintln(os.Stderr, err)

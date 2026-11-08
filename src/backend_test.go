@@ -62,6 +62,22 @@ func TestNotifySendEscapesMarkupAndMapsUrgency(t *testing.T) {
 	}
 }
 
+func TestFallbacksCarryTheImageAndOnlyURLClicks(t *testing.T) {
+	c := terminalNotifierCmd("tn", "demo", Notification{Title: "t", Icon: "/s/images/a.png", Open: "http://127.0.0.1:7822/"})
+	if !slices.Contains(c.args, "-contentImage") || !slices.Contains(c.args, "http://127.0.0.1:7822/") {
+		t.Fatalf("args = %q", c.args)
+	}
+	// A path click is never handed to terminal-notifier, whose -execute is a shell.
+	c = terminalNotifierCmd("tn", "demo", Notification{Title: "t", Open: "/usr/local/bin/demo"})
+	if slices.Contains(c.args, "-open") || slices.Contains(c.args, "-execute") {
+		t.Fatalf("args = %q", c.args)
+	}
+	c = notifySendCmd("ns", "demo", "/s/icon.png", Notification{Title: "t", Icon: "/s/images/a.png"})
+	if !slices.Contains(c.args, "--icon=/s/images/a.png") {
+		t.Fatalf("the notification's image did not win: %q", c.args)
+	}
+}
+
 func TestTerminalNotifierGroupsByApp(t *testing.T) {
 	c := terminalNotifierCmd("/bin/terminal-notifier", "demo", Notification{Title: "t", Group: "push", Sound: true})
 	if !slices.Equal(c.args, []string{"-title", "t", "-message", " ", "-group", "demo:push", "-sound", "default"}) {
@@ -70,11 +86,16 @@ func TestTerminalNotifierGroupsByApp(t *testing.T) {
 }
 
 func TestPowershellKeepsTextOutOfTheScript(t *testing.T) {
-	c := powershellCmd("powershell.exe", Notification{Title: "'; Remove-Item", Body: "b"})
+	c := powershellCmd("powershell.exe", `C:\app\icon.png`, Notification{Title: "'; Remove-Item", Body: "b"})
 	if strings.Contains(strings.Join(c.args, " "), "Remove-Item") {
 		t.Fatal("title reached the script")
 	}
-	if !slices.Equal(c.env, []string{"NOTIFYKIT_TITLE='; Remove-Item", "NOTIFYKIT_BODY=b"}) {
+	if !slices.Equal(c.env, []string{"NOTIFYKIT_TITLE='; Remove-Item", "NOTIFYKIT_BODY=b", `NOTIFYKIT_IMAGE=C:\app\icon.png`}) {
+		t.Fatalf("env = %q", c.env)
+	}
+	// A notification's own image wins over the app's.
+	c = powershellCmd("powershell.exe", `C:\app\icon.png`, Notification{Title: "t", Icon: `C:\s\images\x.png`})
+	if c.env[2] != `NOTIFYKIT_IMAGE=C:\s\images\x.png` {
 		t.Fatalf("env = %q", c.env)
 	}
 }

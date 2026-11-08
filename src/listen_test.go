@@ -145,6 +145,20 @@ func TestPingRefusesALooseTokenFile(t *testing.T) {
 	}
 }
 
+// A ping is checked like any other notification: a sender cannot make the app
+// open a remote URL or run another program.
+func TestPingCannotAskForAForeignClickAction(t *testing.T) {
+	_, rec, ep := listening(t)
+	for _, open := range []string{"https://example.com/", "/bin/sh", "file:///etc/passwd"} {
+		if _, err := Ping(context.Background(), ep, Notification{Title: "t", Open: open}); err == nil || !strings.Contains(err.Error(), "invalid") {
+			t.Errorf("open %q: err = %v", open, err)
+		}
+	}
+	if len(rec.Sent()) != 0 {
+		t.Fatalf("shown %+v", rec.Sent())
+	}
+}
+
 func TestPingWithNobodyListening(t *testing.T) {
 	dir := shortDir(t)
 	_ = os.MkdirAll(dir, 0o700)
@@ -200,9 +214,20 @@ func TestRunCLI(t *testing.T) {
 	if code, _, _ := run(`{"title":"j","body":"from json","level":1}`, "send", "-json"); code != 0 {
 		t.Fatalf("send -json: %d", code)
 	}
+	icon := filepath.Join(t.TempDir(), "i.png")
+	_ = os.WriteFile(icon, testPNG(t, 16), 0o644)
+	if code, out, errs := run("", "send", "--message", "M", "--description", "D", "--icon", icon, "--open", "http://127.0.0.1:7822/"); code != 0 {
+		t.Fatalf("send --message --description --icon --open: %d %q %q", code, out, errs)
+	}
 	got := rec.Sent()
-	if len(got) != 3 || got[0].Level != Alert || got[1].Title != "p" || got[2].Level != Warn {
+	if len(got) != 4 || got[0].Level != Alert || got[1].Title != "p" || got[2].Level != Warn {
 		t.Fatalf("shown %+v", got)
+	}
+	if m := got[3]; m.Title != "M" || m.Body != "D" || m.Open != "http://127.0.0.1:7822/" || m.Icon == icon || m.Icon == "" {
+		t.Fatalf("the aliases, icon or open were lost: %+v", m)
+	}
+	if code, _, errs := run("", "send", "-open", "file:///etc/passwd"); code != 1 || !strings.Contains(errs, "invalid") {
+		t.Fatalf("a bad -open gave %d %q", code, errs)
 	}
 	for _, bad := range [][]string{{}, {"shout"}, {"send", "-level", "loud"}, {"send", "extra"}} {
 		if code, _, _ := run(`{"exec":"x"}`, bad...); code != 2 {

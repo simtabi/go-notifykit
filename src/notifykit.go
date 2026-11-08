@@ -50,26 +50,43 @@ func (l Level) String() string {
 	return "info"
 }
 
-// Notification is one banner.
+// Notification is one banner. Only Title has a default (the app name); every
+// other field may be left empty.
 type Notification struct {
-	Title    string `json:"title"`              // the first line; the app name when empty
+	Title    string `json:"title"`              // the message: the first line; the app name when empty
 	Subtitle string `json:"subtitle,omitempty"` // second line (macOS only; folded into Body elsewhere)
-	Body     string `json:"body,omitempty"`     // the message
+	Body     string `json:"body,omitempty"`     // the description: the text under the title
 	Level    Level  `json:"level,omitempty"`
 	// Group collapses related notifications: on macOS a new notification in a
 	// group replaces the previous one in Notification Center, and with
 	// [Config.MinInterval] set, repeats within the interval are suppressed.
 	Group string `json:"group,omitempty"`
 	Sound bool   `json:"sound,omitempty"` // play the default sound, where the backend can
+	// Icon is an image for this notification only: an absolute path to a PNG,
+	// JPEG or GIF of at most 10 MB, not a symlink. On macOS it is attached to the
+	// banner (the app's own icon still marks it); on Linux and Windows it
+	// replaces the app's icon. Empty means the app's Config.Icon. It is checked
+	// and copied into the state directory, so the file itself is never moved.
+	Icon string `json:"icon,omitempty"`
+	// Open is run when the notification is clicked, with no shell: an absolute
+	// path to this program's own executable (run with no arguments), or an
+	// http(s) URL on 127.0.0.1, localhost or ::1. Anything else is refused. Only
+	// the macOS helper and terminal-notifier (URLs only) can act on a click.
+	Open string `json:"open,omitempty"`
 }
 
 // Config describes the application the notifications come from.
 type Config struct {
 	// AppName is the name the user sees, e.g. "sange". Required.
 	AppName string
-	// AppID is a reverse-DNS identifier, e.g. "com.sangehq.sange". Required
-	// on macOS, where the helper app's bundle identifier is AppID+".notifier".
+	// AppID is a reverse-DNS identifier for the product, from its own domain
+	// (e.g. "sh.sange.notify"), else "com.simtabi.<binary>". Required on macOS.
 	AppID string
+	// BundleID is the macOS helper app's bundle identifier, which is what
+	// System Settings > Notifications remembers permission by. Empty means
+	// AppID+".notifier". Set it to keep the permission an existing helper app
+	// already has.
+	BundleID string
 	// Icon is a square PNG, ideally 1024x1024. Optional: without it the macOS
 	// helper shows the generic app icon and notify-send shows none.
 	Icon []byte
@@ -150,6 +167,9 @@ func New(cfg Config) (*Notifier, error) {
 	if cfg.AppID != "" && !validAppID(cfg.AppID) {
 		return nil, fmt.Errorf("notifykit: AppID %q must be reverse-DNS, e.g. com.example.app", cfg.AppID)
 	}
+	if cfg.BundleID != "" && !validAppID(cfg.BundleID) {
+		return nil, fmt.Errorf("notifykit: BundleID %q must be reverse-DNS, e.g. com.example.app.notifier", cfg.BundleID)
+	}
 	if cfg.EnvPrefix != "" && !validPrefix(cfg.EnvPrefix) {
 		return nil, fmt.Errorf("notifykit: EnvPrefix %q must be letters, digits and _", cfg.EnvPrefix)
 	}
@@ -195,11 +215,23 @@ func (n *Notifier) Send(ctx context.Context, nt Notification) (Result, error) {
 	if nt.Title == "" {
 		nt.Title = n.cfg.AppName
 	}
+	// Check what the caller (or a ping) asked for before anything else, so a
+	// bad icon or click action is refused even when delivery is off.
+	open, err := checkOpen(nt.Open)
+	if err != nil {
+		return Result{}, err
+	}
+	nt.Open = open
 	if ok, why := n.Enabled(); !ok {
 		return Result{Skipped: why}, nil
 	}
 	if n.suppress(nt.Group) {
 		return Result{Suppressed: true}, nil
+	}
+	if nt.Icon != "" {
+		if nt.Icon, err = n.prepareImage(nt.Icon); err != nil {
+			return Result{}, err
+		}
 	}
 	b, err := n.pick()
 	if err != nil {
@@ -339,11 +371,16 @@ func validPrefix(s string) bool {
 const maxField = 240
 
 // clean replaces control characters (newlines, terminal escapes) with spaces,
-// collapses runs of space and bounds the length.
+// drops bidirectional overrides and other invisible format characters (which
+// can make a banner read differently from what it says), collapses runs of
+// space and bounds the length.
 func clean(s string) string {
 	s = strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) || r == utf8.RuneError {
+		switch {
+		case unicode.IsControl(r) || r == utf8.RuneError:
 			return ' '
+		case unicode.Is(unicode.Cf, r):
+			return -1
 		}
 		return r
 	}, s)
@@ -357,6 +394,8 @@ func clean(s string) string {
 
 func sanitize(nt Notification) Notification {
 	nt.Title, nt.Subtitle, nt.Body, nt.Group = clean(nt.Title), clean(nt.Subtitle), clean(nt.Body), clean(nt.Group)
+	// Paths and URLs are checked, not rewritten: trimming is all they get here.
+	nt.Icon, nt.Open = strings.TrimSpace(nt.Icon), strings.TrimSpace(nt.Open)
 	return nt
 }
 

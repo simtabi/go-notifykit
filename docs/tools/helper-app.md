@@ -7,7 +7,7 @@
 | Path in the bundle | Source |
 |---|---|
 | `Contents/MacOS/notifier` | the universal notifier embedded in macOS builds, built from `src/macos/notifier.swift` |
-| `Contents/Info.plist` | written from `Config`: `CFBundleDisplayName` = `AppName`, `CFBundleIdentifier` = `AppID + ".notifier"`, `LSUIElement` true (no Dock icon) |
+| `Contents/Info.plist` | written from `Config`: `CFBundleDisplayName` = `AppName`, `CFBundleIdentifier` = `BundleID` (default `AppID + ".notifier"`), `LSUIElement` true (no Dock icon), and `NotifyKitOpenPath`, the one executable a click may run |
 | `Contents/Resources/AppIcon.icns` | built from `Config.Icon`; absent when there is no usable icon, and then the plist names none |
 | `Contents/Resources/notifykit.stamp` | a hash of the three inputs above |
 
@@ -17,9 +17,12 @@ It lives in the state directory: `~/.local/state/<app>/notifykit/<AppName> Notif
 
 1. The first `Send` (or `Backend()`) compares the stamp with the current inputs. If they match, nothing is written.
 2. Otherwise a new bundle is written beside the old one, signed ad hoc (`codesign --force --sign -`), swapped in, and registered with LaunchServices (`lsregister -f`).
-3. Each notification runs `Contents/MacOS/notifier` with one JSON object on stdin.
+3. Each notification runs `Contents/MacOS/notifier` with one JSON object on stdin:
+   title, subtitle, body, group, sound, the checked image copy and the checked click action.
+4. A click relaunches the app with nothing on stdin. It reads the action from the
+   clicked notification, checks it again, runs or opens it, and quits.
 
-Registration is not optional. Without it the notification center logs `Failed to find or validate client` and refuses the app without asking the user. A failed registration is logged, not fatal.
+Registration is not optional. Without it the notification center logs `Failed to find or validate client` and refuses the app without asking the user, which is also why a "not allowed" answer triggers one more registration and retry before falling back. A failed registration is logged, not fatal.
 
 ## Notifier exit status
 
@@ -27,7 +30,7 @@ Registration is not optional. Without it the notification center logs `Failed to
 |---|---|---|
 | 0 | posted | `Result{Backend: "helper"}` |
 | 2 | bad input | an error |
-| 3 | the user has not allowed notifications | `ErrDenied` |
+| 3 | macOS does not allow notifications from the app | the app is registered again and the notification retried once; if it is still refused, it is shown through `osascript`, and `ErrDenied` comes back only if that fails too |
 | 4 | no answer within two minutes | an error |
 | still running at `Timeout` | macOS is showing its permission prompt | `Result{Pending: true}`; the banner follows once the user allows it |
 

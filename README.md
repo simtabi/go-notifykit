@@ -34,7 +34,7 @@ import notifykit "github.com/simtabi/go-notifykit/src"
 
 n, err := notifykit.New(notifykit.Config{
 	AppName:   "sange",
-	AppID:     "com.simtabi.sange",
+	AppID:     "sh.sange.notify",
 	Icon:      sangeIconPNG,        // square PNG, ideally 1024px
 	EnvPrefix: "SANGE",             // SANGE_NOTIFY_DESKTOP=0 turns it off
 	MinInterval: 30 * time.Second, // one banner per group per 30s
@@ -47,6 +47,7 @@ res, err := n.Send(ctx, notifykit.Notification{
 	Body:  "dev pushed bca8339 to main; already on the host. Run: sange triage list",
 	Level: notifykit.Alert,
 	Group: "push:billing-api",
+	Open:  "http://127.0.0.1:7822/triage", // on click: the app's own web UI
 })
 ```
 

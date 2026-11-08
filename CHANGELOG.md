@@ -28,3 +28,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `notify ping` and `notify doctor`.
 - **First run reports `Result.Pending`** while macOS shows its permission
   prompt, rather than an error.
+- **Per-notification content with defaults**, merged from sange's helper: a
+  title (default: the app name), body, subtitle, an `Icon` image (default: the
+  app's icon), a `Group`, and an `Open` click action, the same in the Go API,
+  `notify send --title/--message --body/--description --icon --open` and over
+  `Listen`.
+- **Click-to-open.** The macOS helper is now a small app that receives the click,
+  checks the action again and runs this program's own executable (no shell) or
+  opens a loopback `http(s)` URL; nothing else.
+- **Safe images.** An `Icon` must be an absolute, non-symlink regular file of at
+  most 10 MB whose content is PNG, JPEG or GIF; it is copied into the state
+  directory first, because macOS moves attached files.
+- **"Not allowed" is retried.** The helper app is registered with LaunchServices
+  again and the notification retried once before falling back to `osascript`.
+- **`Config.BundleID`** keeps an existing helper app's notification permission.
+- **Bidirectional overrides and other invisible format characters** are dropped
+  from every text field.

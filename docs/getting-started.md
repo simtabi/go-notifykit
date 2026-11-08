@@ -10,7 +10,7 @@ var iconPNG []byte
 
 n, err := notifykit.New(notifykit.Config{
 	AppName:   "sange",            // what the banner says
-	AppID:     "com.simtabi.sange", // what System Settings lists (+ ".notifier")
+	AppID:     "sh.sange.notify",   // the product's own reverse-DNS; macOS lists AppID + ".notifier"
 	Icon:      iconPNG,             // square PNG, 1024px is best
 	EnvPrefix: "SANGE",             // SANGE_NOTIFY_DESKTOP / SANGE_NOTIFY_BACKEND
 })
