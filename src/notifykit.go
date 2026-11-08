@@ -3,8 +3,9 @@
 //
 // On macOS it assembles a small signed helper app, "<AppName> Notifier.app",
 // from a prebuilt notifier embedded in this package, so a banner says "sange"
-// with sange's icon rather than "Script Editor". It falls back to
-// terminal-notifier and then osascript when the helper cannot be used. On Linux
+// with sange's icon rather than "Script Editor". It falls back to the
+// osascript macOS provides when the helper cannot be used, and never to a
+// third-party notifier: every app ships its own helper. On Linux
 // and the BSDs it uses notify-send, and on Windows a PowerShell toast.
 //
 // Desktop delivery switches itself off under `go test` and in CI, so a test
@@ -71,7 +72,7 @@ type Notification struct {
 	// Open is run when the notification is clicked, with no shell: an absolute
 	// path to this program's own executable (run with no arguments), or an
 	// http(s) URL on 127.0.0.1, localhost or ::1. Anything else is refused. Only
-	// the macOS helper and terminal-notifier (URLs only) can act on a click.
+	// the macOS helper acts on a click.
 	Open string `json:"open,omitempty"`
 }
 

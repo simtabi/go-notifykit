@@ -47,7 +47,7 @@ func newHelperBackend(n *Notifier) (Backend, error) {
 		return nil, err
 	}
 	rebuild := func() (string, []byte, error) {
-		return ensureBundle(dir, n.cfg, helperBinary, codesign, lsregister, n.logf)
+		return ensureBundle(dir, n.cfg, helperBinary, signApp, registerApp, n.logf)
 	}
 	app, signed, err := rebuild()
 	if err != nil {
@@ -55,7 +55,7 @@ func newHelperBackend(n *Notifier) (Backend, error) {
 	}
 	return &helperBackend{
 		n: n, app: app, exe: filepath.Join(app, "Contents", "MacOS", "notifier"),
-		signed: signed, rebuild: rebuild, register: lsregister,
+		signed: signed, rebuild: rebuild, register: registerApp,
 		fallback: &cmdBackend{name: "osascript", run: run, build: func(nt Notification) (command, error) { return osascriptCmd(nt), nil }},
 	}, nil
 }
@@ -173,6 +173,12 @@ type signer func(path string) error
 func codesign(path string) error {
 	return execRun(context.Background(), command{name: "/usr/bin/codesign", args: []string{"--force", "--sign", "-", "--timestamp=none", path}})
 }
+
+// Seams: tests must not sign apps or register them with LaunchServices.
+var (
+	signApp     signer = codesign
+	registerApp signer = lsregister
+)
 
 // lsregisterPath is LaunchServices' own registration tool, present on every Mac.
 const lsregisterPath = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"

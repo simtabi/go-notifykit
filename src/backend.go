@@ -150,14 +150,21 @@ func platformBackend(n *Notifier, force string) (Backend, error) {
 				return nil, err
 			}
 		}
-		if try("terminal-notifier") {
-			if bin, err := lookPath("terminal-notifier"); err == nil {
-				return &cmdBackend{name: "terminal-notifier", run: run, build: func(nt Notification) (command, error) {
-					return terminalNotifierCmd(bin, n.cfg.AppName, nt), nil
-				}}, nil
-			} else if force != "" {
+		// terminal-notifier is a third-party program, so it is never chosen
+		// automatically: an app ships its own helper, and macOS provides
+		// osascript. It is reachable only when a backend switch names it.
+		//
+		// Deprecated: the explicit terminal-notifier backend is kept so a
+		// caller that names it still works; removable no earlier than 0.2.0.
+		if force == "terminal-notifier" {
+			bin, err := lookPath("terminal-notifier")
+			if err != nil {
 				return nil, fmt.Errorf("terminal-notifier not found: %w", ErrUnsupported)
 			}
+			n.logf("the terminal-notifier backend is deprecated and named explicitly; apps use their own helper")
+			return &cmdBackend{name: "terminal-notifier", run: run, build: func(nt Notification) (command, error) {
+				return terminalNotifierCmd(bin, n.cfg.AppName, nt), nil
+			}}, nil
 		}
 		if try("osascript") {
 			return &cmdBackend{name: "osascript", run: run, build: func(nt Notification) (command, error) {

@@ -44,7 +44,7 @@ The first run shows macOS's "allow notifications" prompt. A dismissed or decline
 
 ## When it is not used
 
-Without `AppID`, or if `codesign` fails, go-notifykit logs why and falls back to `terminal-notifier`, then `osascript`. `NOTIFYKIT_BACKEND=helper` turns that fallback into an error.
+Without `AppID`, or if `codesign` fails, go-notifykit logs why and falls back to `osascript`, which macOS provides. It never falls back to a third-party notifier. `NOTIFYKIT_BACKEND=helper` turns that fallback into an error.
 
 ---
 

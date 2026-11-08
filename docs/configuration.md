@@ -7,7 +7,7 @@ Twelve `Config` fields and four environment variables decide whether, how and fr
 | Field | Default | Meaning |
 |---|---|---|
 | `AppName` | required | The name on every banner, e.g. `sange`. No `/`, `\` or `:`. |
-| `AppID` | none | Reverse-DNS from the product's own domain (`sh.sange.notify`), else `com.simtabi.<binary>`. Required for the macOS helper. Without it macOS falls back to `terminal-notifier` or `osascript`. |
+| `AppID` | none | Reverse-DNS from the product's own domain (`sh.sange.notify`), else `com.simtabi.<binary>`. Required for the macOS helper. Without it macOS falls back to `osascript`. |
 | `BundleID` | `AppID + ".notifier"` | The helper app's bundle identifier, which macOS remembers notification permission by. Set it to keep a permission an existing helper already has. |
 | `Icon` | none | A square PNG, ideally 1024px. macOS gets an `.icns` built from it; `notify-send` gets the PNG. |
 | `EnvPrefix` | none | Names the per-app switches, e.g. `SANGE`. |
@@ -38,8 +38,12 @@ or every app with `NOTIFYKIT_DESKTOP=0`.
 ## Forcing a backend
 
 `<PREFIX>_NOTIFY_BACKEND`, then `NOTIFYKIT_BACKEND`: one of `helper`,
-`terminal-notifier`, `osascript`, `notify-send`, `powershell`, or `none`. A forced
-backend that is unavailable is an error rather than a silent fallback.
+`osascript`, `notify-send`, `powershell`, or `none`. A forced backend that is
+unavailable is an error rather than a silent fallback.
+
+`terminal-notifier` is also accepted here, and only here: it is a third-party
+program, never chosen automatically, and deprecated (removable no earlier than
+0.2.0). Apps ship their own helper instead.
 
 ## Notification fields
 
@@ -51,7 +55,7 @@ Every field but `Title` may be left empty.
 | `Body` | empty | The description: the text under the title. |
 | `Subtitle` | empty | Second line on macOS; joined to the body elsewhere. |
 | `Icon` | the app's `Config.Icon` | An image for this notification: an absolute path to a PNG, JPEG or GIF of at most 10 MB, not a symlink. Attached on macOS; replaces the app icon on Linux and Windows. |
-| `Open` | nothing | Run on click: this program's own executable (no arguments, no shell), or an `http(s)` URL on `127.0.0.1`, `localhost` or `::1`. macOS helper, and `terminal-notifier` for URLs. |
+| `Open` | nothing | Run on click: this program's own executable (no arguments, no shell), or an `http(s)` URL on `127.0.0.1`, `localhost` or `::1`. macOS helper only. |
 | `Group` | none | Collapses related banners (see `MinInterval`); on macOS a newer one in a group replaces the older. |
 | `Level` | `Info` | `Info`, `Warn`, `Alert`; `notify-send` maps it to urgency. |
 | `Sound` | off | Play the default sound where the backend can. |

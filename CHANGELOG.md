@@ -6,6 +6,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **No third-party notifier is ever used automatically.** On macOS the chain is the
+  app's own helper, then `osascript`, which macOS provides; `terminal-notifier` is
+  no longer tried when it happens to be installed. It stays reachable only when
+  `NOTIFYKIT_BACKEND` or `<PREFIX>_NOTIFY_BACKEND` names it, and is deprecated
+  (removable no earlier than 0.2.0). A test fails if any automatic fallback names
+  a program the app does not ship or the OS does not provide.
+
 ### Security
 
 - **The installed helper app is verified, not trusted** (O-03, found in sange's
@@ -25,7 +34,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `Send` assembles `<AppName> Notifier.app` from an embedded universal notifier,
   signs it ad hoc, registers it with LaunchServices and posts through
   `UNUserNotificationCenter`, so a banner no longer says "Script Editor". It falls
-  back to `terminal-notifier`, then `osascript`. Linux and the BSDs use
+  back to `osascript`. Linux and the BSDs use
   `notify-send` with the app's icon; Windows uses a PowerShell toast.
 - **Silent under tests and in CI.** Desktop delivery is off under `go test` and
   when `CI` is set, unless `NOTIFYKIT_DESKTOP=1`. Per-app switches
