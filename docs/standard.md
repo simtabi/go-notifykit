@@ -11,8 +11,8 @@ event), uses `github.com/simtabi/go-notifykit/src`. It does not call
 
 **No third-party notifier.** Every app ships its own helper (go-notifykit builds
 it per app on macOS), and the only fallbacks are what the operating system
-provides. An app never names the deprecated `terminal-notifier` backend, and never
-depends on any other notifier being installed. go-notifykit's
+provides. An app never depends on any other notifier being installed; go-notifykit
+has no third-party backend to name. go-notifykit's
 `TestAutomaticChoiceUsesOnlyTheAppsHelperOrTheOS` holds the library to this.
 
 ## What each program provides

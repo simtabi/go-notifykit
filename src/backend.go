@@ -121,7 +121,7 @@ var (
 )
 
 // backendNames are the values NOTIFYKIT_BACKEND accepts.
-var backendNames = []string{"helper", "terminal-notifier", "osascript", "notify-send", "powershell", "none"}
+var backendNames = []string{"helper", "osascript", "notify-send", "powershell", "none"}
 
 // platformBackend chooses the backend for this OS, or the one force names.
 func platformBackend(n *Notifier, force string) (Backend, error) {
@@ -149,22 +149,6 @@ func platformBackend(n *Notifier, force string) (Backend, error) {
 			if force != "" {
 				return nil, err
 			}
-		}
-		// terminal-notifier is a third-party program, so it is never chosen
-		// automatically: an app ships its own helper, and macOS provides
-		// osascript. It is reachable only when a backend switch names it.
-		//
-		// Deprecated: the explicit terminal-notifier backend is kept so a
-		// caller that names it still works; removable no earlier than 0.2.0.
-		if force == "terminal-notifier" {
-			bin, err := lookPath("terminal-notifier")
-			if err != nil {
-				return nil, fmt.Errorf("terminal-notifier not found: %w", ErrUnsupported)
-			}
-			n.logf("the terminal-notifier backend is deprecated and named explicitly; apps use their own helper")
-			return &cmdBackend{name: "terminal-notifier", run: run, build: func(nt Notification) (command, error) {
-				return terminalNotifierCmd(bin, n.cfg.AppName, nt), nil
-			}}, nil
 		}
 		if try("osascript") {
 			return &cmdBackend{name: "osascript", run: run, build: func(nt Notification) (command, error) {
@@ -246,31 +230,6 @@ func notOption(s string) string {
 	return s
 }
 
-// terminalNotifierCmd uses terminal-notifier, whose -group replaces an earlier
-// banner in the same group.
-func terminalNotifierCmd(bin, app string, nt Notification) command {
-	// terminal-notifier reads "-name value" pairs, so a value starting with
-	// "-" would be taken for an option: notOption keeps every value text.
-	args := []string{"-title", notOption(nt.Title), "-message", notOption(nonEmpty(nt.Body, " "))}
-	if nt.Subtitle != "" {
-		args = append(args, "-subtitle", notOption(nt.Subtitle))
-	}
-	if nt.Group != "" {
-		args = append(args, "-group", notOption(app+":"+nt.Group))
-	}
-	if nt.Sound {
-		args = append(args, "-sound", "default")
-	}
-	if nt.Icon != "" {
-		args = append(args, "-contentImage", nt.Icon)
-	}
-	// Only a URL: terminal-notifier's -execute runs a shell, which is never used.
-	if strings.HasPrefix(nt.Open, "http://") || strings.HasPrefix(nt.Open, "https://") {
-		args = append(args, "-open", nt.Open)
-	}
-	return command{name: bin, args: args}
-}
-
 // notifySendCmd uses notify-send, which reads a small markup subset in the
 // body; "--" ends its options.
 func notifySendCmd(bin, app, icon string, nt Notification) command {
@@ -312,13 +271,6 @@ $x = New-Object Windows.Data.Xml.Dom.XmlDocument
 $x.LoadXml("<toast><visual><binding template=""ToastGeneric""><text>$t</text><text>$b</text>$i</binding></visual></toast>")
 $app = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe'
 [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($app).Show([Windows.UI.Notifications.ToastNotification]::new($x))`
-
-func nonEmpty(s, def string) string {
-	if s == "" {
-		return def
-	}
-	return s
-}
 
 // writeFileAtomic writes through a temporary file and a rename, so a reader
 // never sees a half-written file.

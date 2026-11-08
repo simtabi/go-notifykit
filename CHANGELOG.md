@@ -8,12 +8,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- **No third-party notifier is ever used automatically.** On macOS the chain is the
-  app's own helper, then `osascript`, which macOS provides; `terminal-notifier` is
-  no longer tried when it happens to be installed. It stays reachable only when
-  `NOTIFYKIT_BACKEND` or `<PREFIX>_NOTIFY_BACKEND` names it, and is deprecated
-  (removable no earlier than 0.2.0). A test fails if any automatic fallback names
-  a program the app does not ship or the OS does not provide.
+- **No third-party notifier is ever used.** On macOS the chain is the app's own
+  helper, then `osascript`, which macOS provides. A test fails if any automatic
+  fallback names a program the app does not ship or the OS does not provide.
+
+### Removed
+
+- **The `terminal-notifier` backend**, on the owner's decision of 2026-11-08
+  ("add no third-party notifier dependency"). It was first taken out of the
+  automatic chain and deprecated (#4); it never shipped in a release.
+  `NOTIFYKIT_BACKEND=terminal-notifier` is now an unknown-backend error.
 
 ### Security
 
@@ -24,9 +28,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   notifier swapped in by another process never runs. The helper app, the icon and
   their directories are now user-only (`0700`/`0600`).
 - **No notification text can be read as a command-line option** (O-04).
-  terminal-notifier and osascript both parse options from their arguments; a
-  title, subtitle, body or group starting with `-` now gets an invisible word
-  joiner in front.
+  osascript parses options from its arguments; a title, subtitle or body
+  starting with `-` now gets an invisible word joiner in front.
 
 ### Added
 

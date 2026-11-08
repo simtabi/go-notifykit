@@ -41,10 +41,6 @@ or every app with `NOTIFYKIT_DESKTOP=0`.
 `osascript`, `notify-send`, `powershell`, or `none`. A forced backend that is
 unavailable is an error rather than a silent fallback.
 
-`terminal-notifier` is also accepted here, and only here: it is a third-party
-program, never chosen automatically, and deprecated (removable no earlier than
-0.2.0). Apps ship their own helper instead.
-
 ## Notification fields
 
 Every field but `Title` may be left empty.

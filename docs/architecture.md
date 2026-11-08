@@ -45,8 +45,8 @@ Every app ships its own helper, so a notification never depends on what else
 happens to be installed on the machine. The automatic chain is the app's helper,
 then what the operating system itself provides (`osascript`, `notify-send`, a
 PowerShell toast), and nothing else; `TestAutomaticChoiceUsesOnlyTheAppsHelperOrTheOS`
-fails if a fallback ever reaches for anything more. `terminal-notifier` remains
-only as a deprecated backend a caller must name explicitly.
+fails if a fallback ever reaches for anything more. There is no third-party
+backend to name, either: the `terminal-notifier` one was removed.
 
 ## Why off under tests and in CI?
 
