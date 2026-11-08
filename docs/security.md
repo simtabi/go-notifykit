@@ -66,6 +66,18 @@ boundary every per-user socket shares.
 
 ## The macOS helper
 
+Each process signs a fresh copy of the helper app at start and compares it, file by
+file, with the installed one, replacing any difference. Before each notification
+the installed notifier is compared again with the bytes signed at start. A
+notifier swapped in by another process is therefore replaced, not run. The app
+and the state directory are user-only (`0700` directories, `0600` files, the
+notifier `0700`).
+
+terminal-notifier and osascript both read options from their arguments, so a
+title, subtitle, body or group starting with `-` gets an invisible word joiner
+(U+2060) in front: it reads the same in the banner and cannot be taken for an
+option.
+
 The notifier is built from `src/macos/notifier.swift` in this repository, and a
 test fails if the embedded binary's recorded source hash does not match the
 source. The assembled app is signed ad hoc on the user's machine; it is never

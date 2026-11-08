@@ -9,14 +9,18 @@
 | `Contents/MacOS/notifier` | the universal notifier embedded in macOS builds, built from `src/macos/notifier.swift` |
 | `Contents/Info.plist` | written from `Config`: `CFBundleDisplayName` = `AppName`, `CFBundleIdentifier` = `BundleID` (default `AppID + ".notifier"`), `LSUIElement` true (no Dock icon), and `NotifyKitOpenPath`, the one executable a click may run |
 | `Contents/Resources/AppIcon.icns` | built from `Config.Icon`; absent when there is no usable icon, and then the plist names none |
-| `Contents/Resources/notifykit.stamp` | a hash of the three inputs above |
 
 It lives in the state directory: `~/.local/state/<app>/notifykit/<AppName> Notifier.app` by default.
 
 ## Lifecycle
 
-1. The first `Send` (or `Backend()`) compares the stamp with the current inputs. If they match, nothing is written.
-2. Otherwise a new bundle is written beside the old one, signed ad hoc (`codesign --force --sign -`), swapped in, and registered with LaunchServices (`lsregister -f`).
+1. The first `Send` (or `Backend()`) in a process writes a fresh bundle beside the installed one and signs it ad hoc (`codesign --force --sign -`, deterministic).
+2. The two are compared file by file, bytes and permission bits. If they match, the fresh copy is discarded. Otherwise, because this build changed or because something altered the installed app, the fresh one is swapped in and registered with LaunchServices (`lsregister -f`). The installed app is never trusted just because it is there.
+   Before each notification, the installed notifier is read again and compared with the bytes signed at start; a mismatch rebuilds the app first, so a notifier replaced after start never runs.
+   Everything is user-only: directories `0700`, the notifier `0700`, the other files `0600`.
+   The plist names the program's own executable (the one a click may run), so a program started
+   with `go run`, which gets a new temporary path each time, has its app rebuilt on every run. An
+   installed binary keeps its path, and its app is kept.
 3. Each notification runs `Contents/MacOS/notifier` with one JSON object on stdin:
    title, subtitle, body, group, sound, the checked image copy and the checked click action.
 4. A click relaunches the app with nothing on stdin. It reads the action from the

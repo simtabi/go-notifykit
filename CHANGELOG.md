@@ -6,6 +6,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+- **The installed helper app is verified, not trusted** (O-03, found in sange's
+  security review). Its stamp file is gone: each process signs a fresh copy at
+  start and replaces the installed app if any file differs, and every
+  notification re-checks the notifier against the bytes signed at start, so a
+  notifier swapped in by another process never runs. The helper app, the icon and
+  their directories are now user-only (`0700`/`0600`).
+- **No notification text can be read as a command-line option** (O-04).
+  terminal-notifier and osascript both parse options from their arguments; a
+  title, subtitle, body or group starting with `-` now gets an invisible word
+  joiner in front.
+
 ### Added
 
 - **Notifications under the program's own name and icon.** On macOS the first
