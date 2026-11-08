@@ -1,0 +1,19 @@
+# Intermediates of `make helper` (src/macos/notifier itself is tracked).
+/.helper-build/
+
+# Test / coverage
+*.out
+coverage.*
+
+# Go
+go.work
+go.work.sum
+
+# Editors / OS
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Local Claude Code settings
+.claude/settings.local.json
