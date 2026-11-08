@@ -30,11 +30,11 @@ func (*helperBackend) Name() string { return "helper" }
 
 // newHelperBackend makes sure the helper app is current and returns it.
 func newHelperBackend(n *Notifier) (Backend, error) {
-	if len(helperBinary) == 0 {
-		return nil, errors.New("this build carries no macOS notifier")
-	}
 	if n.cfg.AppID == "" {
 		return nil, errors.New("Config.AppID is required for the macOS notifier app")
+	}
+	if len(helperBinary) == 0 {
+		return nil, errors.New("this build carries no macOS notifier")
 	}
 	dir, err := n.stateDir()
 	if err != nil {

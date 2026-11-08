@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -156,7 +157,7 @@ func TestNewValidatesConfig(t *testing.T) {
 
 func TestStateDir(t *testing.T) {
 	n, _ := New(Config{AppName: "My App", Getenv: env("XDG_STATE_HOME", "/state")})
-	if d, _ := n.stateDir(); d != "/state/my-app/notifykit" {
+	if d, _ := n.stateDir(); d != filepath.Join("/state", "my-app", "notifykit") {
 		t.Fatalf("stateDir = %q", d)
 	}
 	n, _ = New(Config{AppName: "x", StateDir: "/custom"})

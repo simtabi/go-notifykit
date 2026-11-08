@@ -13,6 +13,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -84,8 +85,8 @@ func TestEnsureBundleWritesSignsAndReuses(t *testing.T) {
 		t.Fatalf("registered %q, want [%q]", registered, app)
 	}
 	exe, err := os.Stat(filepath.Join(app, "Contents", "MacOS", "notifier"))
-	if err != nil || exe.Mode().Perm()&0o100 == 0 {
-		t.Fatalf("notifier: %v %v", exe, err)
+	if err != nil || (runtime.GOOS != "windows" && exe.Mode().Perm()&0o100 == 0) {
+		t.Fatalf("notifier is missing or not executable: %v", err)
 	}
 	plist, _ := os.ReadFile(filepath.Join(app, "Contents", "Info.plist"))
 	for _, want := range []string{
