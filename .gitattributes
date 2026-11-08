@@ -1,0 +1,5 @@
+# The macOS notifier is a compiled binary, and TestHelperIsBuiltFromSource hashes
+# the Swift source: neither may be touched by line-ending conversion (Windows).
+src/macos/notifier binary
+src/macos/notifier.swift text eol=lf
+src/macos/notifier.swift.sha256 text eol=lf

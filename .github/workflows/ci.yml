@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+  # Nothing re-runs after a merge, so once a week the default branch is tested
+  # again to catch drift (a new Go release, a changed runner image).
+  schedule:
+    - cron: "17 6 * * 1"
+
+permissions:
+  contents: read
+
+# A newer push to the same PR cancels the run it supersedes, and draft PRs do
+# not run. The repository is public, so macOS minutes are free here; macOS is
+# tested on every pull request because the helper app only exists there.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    if: ${{ !github.event.pull_request.draft }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: src/go.mod
+      # The module lives in src/: a bare `go test ./...` at the root finds no
+      # packages and passes, so every command names it.
+      - run: go -C src vet ./...
+      - run: go -C src build ./...
+      - run: go -C src test ./... -count=1 -timeout 120s
+
+  race:
+    name: race detector
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: src/go.mod
+      - run: go -C src test ./... -race -count=1 -timeout 180s
+
+  helper:
+    name: macOS helper is built from its source
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - run: make helper-check
+      - run: make fmt-check
