@@ -205,7 +205,7 @@ func (n *Notifier) iconFile() string {
 	if old, err := os.ReadFile(p); err == nil && bytes.Equal(old, n.cfg.Icon) {
 		return p
 	}
-	if err := writeFileAtomic(p, n.cfg.Icon, 0o644); err != nil {
+	if err := writeFileAtomic(p, n.cfg.Icon, 0o600); err != nil {
 		n.logf("cannot write the icon: %v", err)
 		return ""
 	}
@@ -220,19 +220,36 @@ func osascriptCmd(nt Notification) command {
 		"-e", "on run argv",
 		"-e", "display notification (item 3 of argv) with title (item 1 of argv) subtitle (item 2 of argv)",
 		"-e", "end run",
-		nt.Title, nt.Subtitle, nt.Body,
+		// osascript keeps reading options after its script, so a value that
+		// starts with "-" would be taken for one.
+		notOption(nt.Title), notOption(nt.Subtitle), notOption(nt.Body),
 	}}
+}
+
+// wordJoiner is U+2060: invisible, and not a "-".
+const wordJoiner = "\u2060"
+
+// notOption stops a value from being read as a command-line option by the
+// notifier it is passed to: one starting with "-" gets an invisible word
+// joiner in front, so the banner reads the same and the parser sees text.
+func notOption(s string) string {
+	if strings.HasPrefix(s, "-") {
+		return wordJoiner + s
+	}
+	return s
 }
 
 // terminalNotifierCmd uses terminal-notifier, whose -group replaces an earlier
 // banner in the same group.
 func terminalNotifierCmd(bin, app string, nt Notification) command {
-	args := []string{"-title", nt.Title, "-message", nonEmpty(nt.Body, " ")}
+	// terminal-notifier reads "-name value" pairs, so a value starting with
+	// "-" would be taken for an option: notOption keeps every value text.
+	args := []string{"-title", notOption(nt.Title), "-message", notOption(nonEmpty(nt.Body, " "))}
 	if nt.Subtitle != "" {
-		args = append(args, "-subtitle", nt.Subtitle)
+		args = append(args, "-subtitle", notOption(nt.Subtitle))
 	}
 	if nt.Group != "" {
-		args = append(args, "-group", app+":"+nt.Group)
+		args = append(args, "-group", notOption(app+":"+nt.Group))
 	}
 	if nt.Sound {
 		args = append(args, "-sound", "default")
@@ -299,7 +316,7 @@ func nonEmpty(s, def string) string {
 // writeFileAtomic writes through a temporary file and a rename, so a reader
 // never sees a half-written file.
 func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
 	f, err := os.CreateTemp(filepath.Dir(path), ".tmp-"+filepath.Base(path)+"-*")

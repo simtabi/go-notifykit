@@ -73,9 +73,9 @@ func TestEnsureBundleWritesSignsAndReuses(t *testing.T) {
 	var signed, registered []string
 	sign := func(p string) error { signed = append(signed, p); return nil }
 	reg := func(p string) error { registered = append(registered, p); return nil }
-	app, err := ensureBundle(dir, cfg, []byte("BIN"), sign, reg, t.Logf)
-	if err != nil {
-		t.Fatal(err)
+	app, signedBin, err := ensureBundle(dir, cfg, []byte("BIN"), sign, reg, t.Logf)
+	if err != nil || string(signedBin) != "BIN" {
+		t.Fatal(signedBin, err)
 	}
 	if app != filepath.Join(dir, "Sange & Co Notifier.app") || len(signed) != 1 || !strings.Contains(signed[0], ".tmp-") {
 		t.Fatalf("app %q, signed %q", app, signed)
@@ -101,12 +101,13 @@ func TestEnsureBundleWritesSignsAndReuses(t *testing.T) {
 		t.Error("no AppIcon.icns")
 	}
 
-	// Same inputs: nothing is rewritten or re-signed.
-	if _, err := ensureBundle(dir, cfg, []byte("BIN"), sign, reg, t.Logf); err != nil || len(signed) != 1 || len(registered) != 1 {
-		t.Fatalf("an identical bundle was rebuilt (%d signs, %d registrations, %v)", len(signed), len(registered), err)
+	// Same inputs: a fresh copy is signed to compare with, and as the two
+	// match, the installed app is kept and not registered again.
+	if _, _, err := ensureBundle(dir, cfg, []byte("BIN"), sign, reg, t.Logf); err != nil || len(signed) != 2 || len(registered) != 1 {
+		t.Fatalf("an identical bundle was replaced (%d signs, %d registrations, %v)", len(signed), len(registered), err)
 	}
-	// A new binary (a newer notifykit) rebuilds it, and registers it again.
-	if _, err := ensureBundle(dir, cfg, []byte("BIN2"), sign, reg, t.Logf); err != nil || len(signed) != 2 || len(registered) != 2 {
+	// A new binary (a newer notifykit) replaces it, and registers it again.
+	if _, _, err := ensureBundle(dir, cfg, []byte("BIN2"), sign, reg, t.Logf); err != nil || len(signed) != 3 || len(registered) != 2 {
 		t.Fatalf("a changed binary was not rebuilt (%d signs, %d registrations, %v)", len(signed), len(registered), err)
 	}
 	if b, _ := os.ReadFile(filepath.Join(app, "Contents", "MacOS", "notifier")); string(b) != "BIN2" {
@@ -118,15 +119,114 @@ func TestEnsureBundleWritesSignsAndReuses(t *testing.T) {
 	}
 }
 
+// O-03: the installed app is checked against what this build produces, not
+// trusted because it is there. A notifier, plist or extra file put in place by
+// anything else is replaced, and the replacement registered.
+func TestEnsureBundleReplacesATamperedApp(t *testing.T) {
+	dir := t.TempDir()
+	cfg := Config{AppName: "demo", AppID: "com.example.demo"}
+	ok := func(string) error { return nil }
+	var regs int
+	reg := func(string) error { regs++; return nil }
+	app, _, err := ensureBundle(dir, cfg, []byte("GOOD"), ok, reg, t.Logf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exe := filepath.Join(app, "Contents", "MacOS", "notifier")
+	for name, tamper := range map[string]func(){
+		"notifier": func() { _ = os.WriteFile(exe, []byte("EVIL"), 0o700) },
+		"plist":    func() { _ = os.WriteFile(filepath.Join(app, "Contents", "Info.plist"), []byte("<plist/>"), 0o600) },
+		"extra":    func() { _ = os.WriteFile(filepath.Join(app, "Contents", "MacOS", "dylib"), []byte("x"), 0o700) },
+		"mode": func() {
+			if runtime.GOOS != "windows" {
+				_ = os.Chmod(exe, 0o777)
+			} else {
+				_ = os.WriteFile(exe, []byte("EVIL"), 0o700)
+			}
+		},
+	} {
+		before := regs
+		tamper()
+		if _, _, err := ensureBundle(dir, cfg, []byte("GOOD"), ok, reg, t.Logf); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if b, _ := os.ReadFile(exe); string(b) != "GOOD" || regs != before+1 {
+			t.Fatalf("%s: notifier %q, registrations %d -> %d", name, b, before, regs)
+		}
+		if _, err := os.Stat(filepath.Join(app, "Contents", "MacOS", "dylib")); err == nil {
+			t.Fatalf("%s: an extra file survived the rebuild", name)
+		}
+	}
+}
+
+// O-03: Send re-checks the notifier it is about to run, so one replaced after
+// start is never executed.
+func TestSendNeverRunsANotifierReplacedAfterStart(t *testing.T) {
+	dir := t.TempDir()
+	n, _ := New(Config{AppName: "demo", AppID: "com.example.demo"})
+	ok := func(string) error { return nil }
+	rebuild := func() (string, []byte, error) { return ensureBundle(dir, n.cfg, []byte("GOOD"), ok, ok, t.Logf) }
+	app, signed, err := rebuild()
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := &helperBackend{n: n, app: app, exe: filepath.Join(app, "Contents", "MacOS", "notifier"), signed: signed, rebuild: rebuild, register: ok}
+	var ran []string
+	old := runHelper
+	t.Cleanup(func() { runHelper = old })
+	runHelper = func(_ context.Context, c command) error {
+		b, _ := os.ReadFile(c.name)
+		ran = append(ran, string(b))
+		return nil
+	}
+	_ = os.WriteFile(h.exe, []byte("EVIL"), 0o700)
+	if err := h.Send(context.Background(), Notification{Title: "t"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(ran) != 1 || ran[0] != "GOOD" {
+		t.Fatalf("ran %q; want only the rebuilt notifier", ran)
+	}
+}
+
+func TestBundleAndStateAreUserOnly(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows has no Unix permission bits")
+	}
+	dir := filepath.Join(t.TempDir(), "state")
+	ok := func(string) error { return nil }
+	app, _, err := ensureBundle(dir, Config{AppName: "demo", AppID: "com.example.demo", Icon: testPNG(t, 32)}, []byte("x"), ok, ok, t.Logf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checked := 0
+	_ = filepath.Walk(dir, func(p string, info os.FileInfo, _ error) error {
+		checked++
+		if info.Mode().Perm()&0o077 != 0 {
+			t.Errorf("%s is %v; want no group or other access", p, info.Mode().Perm())
+		}
+		return nil
+	})
+	if checked < 6 {
+		t.Fatalf("inspected %d paths under %s; expected the whole bundle", checked, app)
+	}
+	n, _ := New(Config{AppName: "demo", StateDir: filepath.Join(t.TempDir(), "s2"), Icon: testPNG(t, 32)})
+	icon := n.iconFile()
+	for _, p := range []string{icon, filepath.Dir(icon)} {
+		if fi, err := os.Stat(p); err != nil || fi.Mode().Perm()&0o077 != 0 {
+			t.Errorf("%s: %v %v", p, fi.Mode(), err)
+		}
+	}
+}
+
 func TestEnsureBundleSignFailureLeavesTheOldApp(t *testing.T) {
 	dir := t.TempDir()
 	cfg := Config{AppName: "demo", AppID: "com.example.demo"}
 	ok := func(string) error { return nil }
-	app, err := ensureBundle(dir, cfg, []byte("v1"), ok, ok, t.Logf)
+	app, _, err := ensureBundle(dir, cfg, []byte("v1"), ok, ok, t.Logf)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ensureBundle(dir, cfg, []byte("v2"), func(string) error { return errors.New("no codesign") }, ok, t.Logf); err == nil {
+	if _, _, err := ensureBundle(dir, cfg, []byte("v2"), func(string) error { return errors.New("no codesign") }, ok, t.Logf); err == nil {
 		t.Fatal("a signing failure was not reported")
 	}
 	if b, _ := os.ReadFile(filepath.Join(app, "Contents", "MacOS", "notifier")); string(b) != "v1" {
@@ -140,7 +240,7 @@ func TestEnsureBundleSignFailureLeavesTheOldApp(t *testing.T) {
 func TestBadIconStillGivesAnApp(t *testing.T) {
 	var logged bytes.Buffer
 	logf := func(f string, _ ...any) { logged.WriteString(f) }
-	app, err := ensureBundle(t.TempDir(), Config{AppName: "demo", AppID: "com.example.demo", Icon: []byte("not a png")}, []byte("x"), func(string) error { return nil }, func(string) error { return nil }, logf)
+	app, _, err := ensureBundle(t.TempDir(), Config{AppName: "demo", AppID: "com.example.demo", Icon: []byte("not a png")}, []byte("x"), func(string) error { return nil }, func(string) error { return nil }, logf)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +262,7 @@ func TestRegisterFailureIsOnlyLogged(t *testing.T) {
 	var logged []string
 	logf := func(f string, _ ...any) { logged = append(logged, f) }
 	ok := func(string) error { return nil }
-	if _, err := ensureBundle(t.TempDir(), Config{AppName: "demo", AppID: "com.example.demo"}, []byte("x"), ok, func(string) error { return errors.New("no lsregister") }, logf); err != nil {
+	if _, _, err := ensureBundle(t.TempDir(), Config{AppName: "demo", AppID: "com.example.demo"}, []byte("x"), ok, func(string) error { return errors.New("no lsregister") }, logf); err != nil {
 		t.Fatal(err)
 	}
 	if len(logged) != 1 || !strings.Contains(logged[0], "LaunchServices") {

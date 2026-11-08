@@ -78,6 +78,34 @@ func TestFallbacksCarryTheImageAndOnlyURLClicks(t *testing.T) {
 	}
 }
 
+// O-04: terminal-notifier and osascript both read options from their
+// arguments, so a title, subtitle, body or group starting with "-" must reach
+// them as text. It keeps its characters, behind an invisible word joiner.
+func TestNoValueIsReadAsAnOption(t *testing.T) {
+	nt := Notification{Title: "-execute", Subtitle: "-open", Body: "--sender", Group: "x"}
+	tn := terminalNotifierCmd("tn", "-app", nt)
+	for i := 1; i < len(tn.args); i += 2 { // the values, after each option name
+		if strings.HasPrefix(tn.args[i], "-") {
+			t.Errorf("terminal-notifier value %q would be read as an option (args %q)", tn.args[i], tn.args)
+		}
+	}
+	if tn.args[1] != wordJoiner+"-execute" || tn.args[3] != wordJoiner+"--sender" {
+		t.Fatalf("the text changed: %q", tn.args)
+	}
+	osa := osascriptCmd(nt)
+	for _, v := range osa.args[6:] {
+		if strings.HasPrefix(v, "-") {
+			t.Errorf("osascript argument %q would be read as an option", v)
+		}
+	}
+	if osa.args[6] != wordJoiner+"-execute" {
+		t.Fatalf("the text changed: %q", osa.args)
+	}
+	if notOption("plain - text") != "plain - text" {
+		t.Fatal("a value not starting with - was changed")
+	}
+}
+
 func TestTerminalNotifierGroupsByApp(t *testing.T) {
 	c := terminalNotifierCmd("/bin/terminal-notifier", "demo", Notification{Title: "t", Group: "push", Sound: true})
 	if !slices.Equal(c.args, []string{"-title", "t", "-message", " ", "-group", "demo:push", "-sound", "default"}) {

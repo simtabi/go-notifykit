@@ -36,8 +36,9 @@ built from source or cross-compiled on Linux: there is no macOS build step that
 could produce a per-app `.app`. One universal notifier (arm64 and x86_64, about
 150 KB) is embedded in macOS builds; the first `Send` writes it into a bundle with
 the app's `Info.plist` and `.icns`, signs it ad hoc with `codesign`, and registers it
-with LaunchServices. A stamp of the inputs means this happens again only when the
-notifier, the name, the ID or the icon changes. Details: [macOS helper app](tools/helper-app.md).
+with LaunchServices. Each later start signs a fresh copy and compares it with the
+installed app, which is replaced only when something differs: a new build, a new
+name, ID or icon, or a file something else altered. Details: [macOS helper app](tools/helper-app.md).
 
 ## Why off under tests and in CI?
 
