@@ -38,9 +38,11 @@ cmd := &cobra.Command{
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `-title` | the app name | first line |
+| `-title`, `-message` | the app name | the message: the first line |
+| `-body`, `-description` | none | the description: the text under the title |
 | `-subtitle` | none | second line |
-| `-body` | none | the message |
+| `-icon` | the app's icon | an image for this notification (PNG, JPEG or GIF, absolute path, at most 10 MB) |
+| `-open` | nothing | on click, a local `http(s)` URL to open, or this program's own path to run |
 | `-group` | none | replace or rate-limit within this group |
 | `-level` | `info` | `info`, `warn` or `alert` |
 | `-sound` | off | play the default sound |
@@ -50,6 +52,8 @@ Exit status: 0 done (including "not shown" because delivery is off), 1 failed, 2
 
 ```bash
 echo '{"title":"Backup","body":"42 files","group":"backup"}' | authama notify send -json
+sange notify send --message "Deploy finished" --description "billing-api is on v1.4.0" \
+  --icon /Users/me/Pictures/deploy.png --open http://127.0.0.1:7822/
 authama notify doctor
 ```
 

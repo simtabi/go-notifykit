@@ -54,7 +54,8 @@ One line each way, UTF-8 JSON, at most 16 KiB, within five seconds.
 {"ok":false,"error":"wrong token"}
 ```
 
-The reply may also carry `skipped`, `suppressed` or `pending`, with the same meaning as in `Result`. Unknown fields are refused. See [Security](../security.md) for the reasoning.
+The notification may carry every field a local one can, `icon` and `open`
+included, and they are checked the same way. The reply may also carry `skipped`, `suppressed` or `pending`, with the same meaning as in `Result`. Unknown fields are refused. See [Security](../security.md) for the reasoning.
 
 ---
 

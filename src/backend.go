@@ -181,8 +181,9 @@ func platformBackend(n *Notifier, force string) (Backend, error) {
 			if err != nil {
 				return nil, fmt.Errorf("powershell.exe not found: %w", ErrUnsupported)
 			}
+			icon := n.iconFile()
 			return &cmdBackend{name: "powershell", run: run, build: func(nt Notification) (command, error) {
-				return powershellCmd(bin, nt), nil
+				return powershellCmd(bin, icon, nt), nil
 			}}, nil
 		}
 	}
@@ -236,6 +237,13 @@ func terminalNotifierCmd(bin, app string, nt Notification) command {
 	if nt.Sound {
 		args = append(args, "-sound", "default")
 	}
+	if nt.Icon != "" {
+		args = append(args, "-contentImage", nt.Icon)
+	}
+	// Only a URL: terminal-notifier's -execute runs a shell, which is never used.
+	if strings.HasPrefix(nt.Open, "http://") || strings.HasPrefix(nt.Open, "https://") {
+		args = append(args, "-open", nt.Open)
+	}
 	return command{name: bin, args: args}
 }
 
@@ -244,6 +252,9 @@ func terminalNotifierCmd(bin, app string, nt Notification) command {
 func notifySendCmd(bin, app, icon string, nt Notification) command {
 	urgency := map[Level]string{Info: "low", Warn: "normal", Alert: "critical"}[nt.Level]
 	args := []string{"--app-name=" + app, "--urgency=" + urgency}
+	if nt.Icon != "" {
+		icon = nt.Icon // this notification's own image wins over the app's
+	}
 	if icon != "" {
 		args = append(args, "--icon="+icon)
 	}
@@ -251,14 +262,18 @@ func notifySendCmd(bin, app, icon string, nt Notification) command {
 	return command{name: bin, args: append(args, "--", nt.Title, body)}
 }
 
-// powershellCmd shows a Windows toast. Title and body travel in the
-// environment and are XML-escaped by PowerShell, so they never become script
-// text.
-func powershellCmd(bin string, nt Notification) command {
+// powershellCmd shows a Windows toast. Title, body and image path travel in
+// the environment and are XML-escaped by PowerShell, so they never become
+// script text.
+func powershellCmd(bin, appIcon string, nt Notification) command {
+	image := nt.Icon
+	if image == "" {
+		image = appIcon
+	}
 	return command{
 		name: bin,
 		args: []string{"-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", windowsToast},
-		env:  []string{"NOTIFYKIT_TITLE=" + nt.Title, "NOTIFYKIT_BODY=" + joined(nt)},
+		env:  []string{"NOTIFYKIT_TITLE=" + nt.Title, "NOTIFYKIT_BODY=" + joined(nt), "NOTIFYKIT_IMAGE=" + image},
 	}
 }
 
@@ -267,8 +282,10 @@ const windowsToast = `$ErrorActionPreference = 'Stop'
 [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null
 $t = [System.Security.SecurityElement]::Escape($env:NOTIFYKIT_TITLE)
 $b = [System.Security.SecurityElement]::Escape($env:NOTIFYKIT_BODY)
+$i = ''
+if ($env:NOTIFYKIT_IMAGE) { $i = '<image placement="appLogoOverride" src="' + [System.Security.SecurityElement]::Escape(([System.Uri]$env:NOTIFYKIT_IMAGE).AbsoluteUri) + '"/>' }
 $x = New-Object Windows.Data.Xml.Dom.XmlDocument
-$x.LoadXml("<toast><visual><binding template=""ToastGeneric""><text>$t</text><text>$b</text></binding></visual></toast>")
+$x.LoadXml("<toast><visual><binding template=""ToastGeneric""><text>$t</text><text>$b</text>$i</binding></visual></toast>")
 $app = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe'
 [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($app).Show([Windows.UI.Notifications.ToastNotification]::new($x))`
 

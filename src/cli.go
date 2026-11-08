@@ -17,12 +17,13 @@ import (
 //	<app> notify ping   [flags]   hand one to the running app (its Listen)
 //	<app> notify doctor           say whether notifications work, and why not
 //
-// Flags: -title, -subtitle, -body, -group, -level info|warn|alert, -sound,
-// and -json to read one notification as JSON from stdin instead. It returns
+// Flags: -title (or -message), -subtitle, -body (or -description), -icon,
+// -open, -group, -level info|warn|alert, -sound, and -json to read one
+// notification as JSON from stdin instead. It returns
 // the process exit status: 0 done, 1 failed, 2 usage.
 func RunCLI(ctx context.Context, n *Notifier, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	usage := func() int {
-		_, _ = fmt.Fprintf(stderr, "usage: %s notify send|ping|doctor [-title T] [-subtitle S] [-body B] [-group G] [-level info|warn|alert] [-sound] [-json]\n", n.cfg.AppName)
+		_, _ = fmt.Fprintf(stderr, "usage: %s notify send|ping|doctor [-title T] [-subtitle S] [-body B] [-icon PATH] [-open URL|PATH] [-group G] [-level info|warn|alert] [-sound] [-json]\n", n.cfg.AppName)
 		return 2
 	}
 	if len(args) == 0 {
@@ -42,9 +43,13 @@ func RunCLI(ctx context.Context, n *Notifier, args []string, stdin io.Reader, st
 	var nt Notification
 	var level string
 	var fromJSON bool
-	fs.StringVar(&nt.Title, "title", "", "the first line (default: the app name)")
+	fs.StringVar(&nt.Title, "title", "", "the message: the first line (default: the app name)")
+	fs.StringVar(&nt.Title, "message", "", "the same as -title")
 	fs.StringVar(&nt.Subtitle, "subtitle", "", "the second line")
-	fs.StringVar(&nt.Body, "body", "", "the message")
+	fs.StringVar(&nt.Body, "body", "", "the description: the text under the title")
+	fs.StringVar(&nt.Body, "description", "", "the same as -body")
+	fs.StringVar(&nt.Icon, "icon", "", "an image for this notification: absolute path to a PNG, JPEG or GIF up to 10 MB (default: the app's icon)")
+	fs.StringVar(&nt.Open, "open", "", "on click, open a local http(s) URL or run this program (default: nothing)")
 	fs.StringVar(&nt.Group, "group", "", "replace an earlier notification in this group")
 	fs.StringVar(&level, "level", "info", "info, warn or alert")
 	fs.BoolVar(&nt.Sound, "sound", false, "play the default sound")
