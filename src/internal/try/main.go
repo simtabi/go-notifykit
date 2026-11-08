@@ -22,7 +22,7 @@ func main() {
 	subtitle := flag.String("subtitle", "", "the second line")
 	body := flag.String("body", "If this banner says notifykit-try with a blue icon, the helper app works.", "the message")
 	group := flag.String("group", "try", "replace an earlier banner in this group")
-	backend := flag.String("backend", "", "force a backend: helper, terminal-notifier, osascript, notify-send, powershell")
+	backend := flag.String("backend", "", "force a backend: helper, osascript, notify-send, powershell")
 	id := flag.String("id", "com.simtabi.notifykit-try", "bundle ID; a new one makes macOS ask for permission afresh")
 	image := flag.String("image", "", "attach this image (absolute path to a PNG, JPEG or GIF)")
 	open := flag.String("open", "", "on click, open this local http(s) URL")

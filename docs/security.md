@@ -14,7 +14,7 @@ notifier as data:
 |---|---|
 | helper | JSON on the notifier's stdin |
 | osascript | `on run argv` arguments; the script itself is a constant |
-| notify-send, and the deprecated terminal-notifier (only when named) | argv; `notify-send` gets `--` and its markup escaped |
+| notify-send | argv; `notify-send` gets `--` and its markup escaped |
 | powershell | environment variables, XML-escaped by PowerShell; the script is a constant |
 
 No backend runs a shell, so quoting in a title cannot run anything.
@@ -37,8 +37,7 @@ resolves to the running program's own executable. Anything else is `ErrInvalid`.
 The macOS helper checks the stored action again when it is clicked, against the
 same rules: the executable must equal the `NotifyKitOpenPath` written into its own
 `Info.plist`. A path runs with no arguments and no shell; a URL opens in the
-browser. `terminal-notifier` is given URLs only, because its `-execute` runs a
-shell. A ping goes through the same checks, so a sender cannot make the app open a
+browser. A ping goes through the same checks, so a sender cannot make the app open a
 remote page or run another program.
 
 ## The ping channel
@@ -73,10 +72,9 @@ notifier swapped in by another process is therefore replaced, not run. The app
 and the state directory are user-only (`0700` directories, `0600` files, the
 notifier `0700`).
 
-terminal-notifier and osascript both read options from their arguments, so a
-title, subtitle, body or group starting with `-` gets an invisible word joiner
-(U+2060) in front: it reads the same in the banner and cannot be taken for an
-option.
+osascript reads options from its arguments, so a title, subtitle or body
+starting with `-` gets an invisible word joiner (U+2060) in front: it reads the
+same in the banner and cannot be taken for an option.
 
 The notifier is built from `src/macos/notifier.swift` in this repository, and a
 test fails if the embedded binary's recorded source hash does not match the

@@ -63,36 +63,11 @@ func TestNotifySendEscapesMarkupAndMapsUrgency(t *testing.T) {
 	}
 }
 
-func TestFallbacksCarryTheImageAndOnlyURLClicks(t *testing.T) {
-	c := terminalNotifierCmd("tn", "demo", Notification{Title: "t", Icon: "/s/images/a.png", Open: "http://127.0.0.1:7822/"})
-	if !slices.Contains(c.args, "-contentImage") || !slices.Contains(c.args, "http://127.0.0.1:7822/") {
-		t.Fatalf("args = %q", c.args)
-	}
-	// A path click is never handed to terminal-notifier, whose -execute is a shell.
-	c = terminalNotifierCmd("tn", "demo", Notification{Title: "t", Open: "/usr/local/bin/demo"})
-	if slices.Contains(c.args, "-open") || slices.Contains(c.args, "-execute") {
-		t.Fatalf("args = %q", c.args)
-	}
-	c = notifySendCmd("ns", "demo", "/s/icon.png", Notification{Title: "t", Icon: "/s/images/a.png"})
-	if !slices.Contains(c.args, "--icon=/s/images/a.png") {
-		t.Fatalf("the notification's image did not win: %q", c.args)
-	}
-}
-
-// O-04: terminal-notifier and osascript both read options from their
-// arguments, so a title, subtitle, body or group starting with "-" must reach
-// them as text. It keeps its characters, behind an invisible word joiner.
+// O-04: osascript reads options from its arguments, so a title, subtitle or
+// body starting with "-" must reach it as text. It keeps its characters,
+// behind an invisible word joiner.
 func TestNoValueIsReadAsAnOption(t *testing.T) {
 	nt := Notification{Title: "-execute", Subtitle: "-open", Body: "--sender", Group: "x"}
-	tn := terminalNotifierCmd("tn", "-app", nt)
-	for i := 1; i < len(tn.args); i += 2 { // the values, after each option name
-		if strings.HasPrefix(tn.args[i], "-") {
-			t.Errorf("terminal-notifier value %q would be read as an option (args %q)", tn.args[i], tn.args)
-		}
-	}
-	if tn.args[1] != wordJoiner+"-execute" || tn.args[3] != wordJoiner+"--sender" {
-		t.Fatalf("the text changed: %q", tn.args)
-	}
 	osa := osascriptCmd(nt)
 	for _, v := range osa.args[6:] {
 		if strings.HasPrefix(v, "-") {
@@ -104,13 +79,6 @@ func TestNoValueIsReadAsAnOption(t *testing.T) {
 	}
 	if notOption("plain - text") != "plain - text" {
 		t.Fatal("a value not starting with - was changed")
-	}
-}
-
-func TestTerminalNotifierGroupsByApp(t *testing.T) {
-	c := terminalNotifierCmd("/bin/terminal-notifier", "demo", Notification{Title: "t", Group: "push", Sound: true})
-	if !slices.Equal(c.args, []string{"-title", "t", "-message", " ", "-group", "demo:push", "-sound", "default"}) {
-		t.Fatalf("args = %q", c.args)
 	}
 }
 
@@ -144,7 +112,8 @@ func TestBackendChoicePerPlatform(t *testing.T) {
 		{goos: "darwin", path: []string{"terminal-notifier"}, want: "osascript"},
 		{goos: "darwin", want: "osascript"},
 		{goos: "darwin", path: []string{"terminal-notifier"}, force: "osascript", want: "osascript"},
-		{goos: "darwin", force: "terminal-notifier", errIs: ErrUnsupported},
+		// Removed on the owner's word (2026-11-08): naming it is an error, not a fallback.
+		{goos: "darwin", path: []string{"terminal-notifier"}, force: "terminal-notifier", errHas: "unknown backend"},
 		{goos: "darwin", force: "helper", errHas: "AppID"},
 		{goos: "linux", path: []string{"notify-send"}, want: "notify-send"},
 		{goos: "linux", errIs: ErrUnsupported},
@@ -209,16 +178,11 @@ func TestAutomaticChoiceUsesOnlyTheAppsHelperOrTheOS(t *testing.T) {
 	if inspected < 8 {
 		t.Fatalf("inspected %d platform choices; expected 8", inspected)
 	}
-	// Named explicitly, the deprecated backend still works for a caller that relies on it.
-	fakePlatform(t, "darwin", "terminal-notifier")
-	if got, err := on(t, Config{}, "NOTIFYKIT_BACKEND", "terminal-notifier").Backend(); err != nil || got != "terminal-notifier" {
-		t.Fatalf("explicit terminal-notifier: %q, %v", got, err)
-	}
 }
 
 func TestAppBackendSwitchBeatsGlobal(t *testing.T) {
 	fakePlatform(t, "darwin", "terminal-notifier")
-	n := on(t, Config{EnvPrefix: "DEMO"}, "DEMO_NOTIFY_BACKEND", "osascript", "NOTIFYKIT_BACKEND", "terminal-notifier")
+	n := on(t, Config{EnvPrefix: "DEMO"}, "DEMO_NOTIFY_BACKEND", "osascript", "NOTIFYKIT_BACKEND", "helper")
 	if got, err := n.Backend(); err != nil || got != "osascript" {
 		t.Fatalf("Backend() = %q, %v", got, err)
 	}
