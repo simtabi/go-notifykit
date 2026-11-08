@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -138,8 +139,9 @@ func TestBackendChoicePerPlatform(t *testing.T) {
 		errIs  error
 		errHas string
 	}{
-		// No AppID, so the helper app cannot be assembled and macOS falls back.
-		{goos: "darwin", path: []string{"terminal-notifier"}, want: "terminal-notifier"},
+		// No AppID, so the helper app cannot be assembled and macOS falls back,
+		// to osascript even when terminal-notifier is installed.
+		{goos: "darwin", path: []string{"terminal-notifier"}, want: "osascript"},
 		{goos: "darwin", want: "osascript"},
 		{goos: "darwin", path: []string{"terminal-notifier"}, force: "osascript", want: "osascript"},
 		{goos: "darwin", force: "terminal-notifier", errIs: ErrUnsupported},
@@ -166,6 +168,51 @@ func TestBackendChoicePerPlatform(t *testing.T) {
 				t.Fatalf("Backend() = %q, %v; want %q", got, err, c.want)
 			}
 		})
+	}
+}
+
+// The owner's rule: every app ships its own helper and adds no third-party
+// notifier. So whatever is installed, nothing forced, the automatic choice on
+// each platform is the app's own helper or a program the OS itself provides.
+// This fails if a fallback ever reaches for a third-party program again.
+func TestAutomaticChoiceUsesOnlyTheAppsHelperOrTheOS(t *testing.T) {
+	everything := []string{"terminal-notifier", "alerter", "growlnotify", "notify-send", "powershell.exe", "osascript", "dunstify", "kdialog", "zenity"}
+	allowed := map[string]map[string]bool{
+		"darwin":  {"helper": true, "osascript": true},
+		"linux":   {"notify-send": true},
+		"freebsd": {"notify-send": true},
+		"windows": {"powershell": true},
+	}
+	oldSign, oldReg := signApp, registerApp
+	signApp, registerApp = func(string) error { return nil }, func(string) error { return nil }
+	t.Cleanup(func() { signApp, registerApp = oldSign, oldReg })
+	inspected := 0
+	for goos, ok := range allowed {
+		for _, appID := range []string{"", "com.example.demo"} { // without and with a helper app
+			ran := fakePlatform(t, goos, everything...)
+			n := on(t, Config{AppID: appID, StateDir: t.TempDir()})
+			got, err := n.Backend()
+			if err != nil || !ok[got] {
+				t.Errorf("%s (AppID %q): chose %q (%v); allowed %v", goos, appID, got, err, ok)
+			}
+			if got != "helper" {
+				_, _ = n.Send(context.Background(), Notification{Title: "t"})
+				for _, c := range *ran {
+					if name := filepath.Base(c.name); name != "osascript" && name != "notify-send" && name != "powershell.exe" {
+						t.Errorf("%s: ran %q, which neither the app nor the OS provides", goos, c.name)
+					}
+				}
+			}
+			inspected++
+		}
+	}
+	if inspected < 8 {
+		t.Fatalf("inspected %d platform choices; expected 8", inspected)
+	}
+	// Named explicitly, the deprecated backend still works for a caller that relies on it.
+	fakePlatform(t, "darwin", "terminal-notifier")
+	if got, err := on(t, Config{}, "NOTIFYKIT_BACKEND", "terminal-notifier").Backend(); err != nil || got != "terminal-notifier" {
+		t.Fatalf("explicit terminal-notifier: %q, %v", got, err)
 	}
 }
 

@@ -20,7 +20,7 @@ named `notifykit`. Go 1.23 or newer.
 | Platform | Backend | Needs |
 |---|---|---|
 | macOS 11+ | `<AppName> Notifier.app`, assembled at run time | nothing: `codesign` and `lsregister` ship with macOS |
-| macOS, fallback | `terminal-notifier`, then `osascript` | `terminal-notifier` is optional (Homebrew) |
+| macOS, fallback | `osascript` | nothing: built into macOS. No third-party notifier is ever used automatically. |
 | Linux, FreeBSD, OpenBSD, NetBSD, DragonFly | `notify-send` | `libnotify` (`libnotify-bin` on Debian and Ubuntu) and a running notification daemon |
 | Windows 10+ | PowerShell toast | Windows PowerShell 5.1 (built in) |
 

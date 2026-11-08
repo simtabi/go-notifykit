@@ -9,8 +9,7 @@ Notifier.Send ── switches (Disabled, env, go test, CI) ── MinInterval pe
       │
       └── Backend (chosen once)
             ├── helper            macOS: "<AppName> Notifier.app", UNUserNotificationCenter
-            ├── terminal-notifier macOS fallback
-            ├── osascript         macOS last resort (shows as "Script Editor")
+            ├── osascript         macOS fallback, built into macOS (shows as "Script Editor")
             ├── notify-send       Linux and the BSDs
             ├── powershell        Windows toast
             └── any Backend       e.g. Recorder in tests
@@ -39,6 +38,15 @@ the app's `Info.plist` and `.icns`, signs it ad hoc with `codesign`, and registe
 with LaunchServices. Each later start signs a fresh copy and compares it with the
 installed app, which is replaced only when something differs: a new build, a new
 name, ID or icon, or a file something else altered. Details: [macOS helper app](tools/helper-app.md).
+
+## Why no third-party notifier?
+
+Every app ships its own helper, so a notification never depends on what else
+happens to be installed on the machine. The automatic chain is the app's helper,
+then what the operating system itself provides (`osascript`, `notify-send`, a
+PowerShell toast), and nothing else; `TestAutomaticChoiceUsesOnlyTheAppsHelperOrTheOS`
+fails if a fallback ever reaches for anything more. `terminal-notifier` remains
+only as a deprecated backend a caller must name explicitly.
 
 ## Why off under tests and in CI?
 

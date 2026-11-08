@@ -14,7 +14,7 @@ notifier as data:
 |---|---|
 | helper | JSON on the notifier's stdin |
 | osascript | `on run argv` arguments; the script itself is a constant |
-| terminal-notifier, notify-send | argv; `notify-send` gets `--` and its markup escaped |
+| notify-send, and the deprecated terminal-notifier (only when named) | argv; `notify-send` gets `--` and its markup escaped |
 | powershell | environment variables, XML-escaped by PowerShell; the script is a constant |
 
 No backend runs a shell, so quoting in a title cannot run anything.
