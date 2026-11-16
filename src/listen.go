@@ -30,9 +30,14 @@ type Endpoint struct {
 // Limits on what Listen accepts.
 const (
 	maxMessage     = 16 << 10        // one message, bytes
-	messageTimeout = 5 * time.Second // to read one message and answer it
-	maxInFlight    = 8               // connections served at once
-	maxSocketPath  = 100             // sun_path is 104 bytes on macOS, 108 on Linux
+	messageTimeout = 5 * time.Second // to read one message, and to write its answer
+	// deliveryTimeout is how long a ping waits for its notification to be
+	// delivered. It is longer than Config.Timeout because a process's first
+	// send on macOS also builds, signs and registers the notifier app before
+	// that clock starts (measured 2026-11-16: 5 to 9 s from a launchd agent).
+	deliveryTimeout = 60 * time.Second
+	maxInFlight     = 8   // connections served at once
+	maxSocketPath   = 100 // sun_path is 104 bytes on macOS, 108 on Linux
 )
 
 // pingRequest is one line a client writes.
@@ -164,7 +169,12 @@ func (n *Notifier) serve(ctx context.Context, conn net.Conn, token string) {
 		n.reply(conn, pingReply{Error: "wrong token"})
 		return
 	}
-	res, err := n.Send(ctx, req.Notification)
+	// The message is in: give the delivery its own budget, and the answer the
+	// usual time after it.
+	dctx, cancel := context.WithTimeout(ctx, deliveryTimeout)
+	defer cancel()
+	_ = conn.SetDeadline(time.Now().Add(deliveryTimeout + messageTimeout))
+	res, err := n.Send(dctx, req.Notification)
 	if err != nil {
 		n.reply(conn, pingReply{Error: err.Error()})
 		return
@@ -190,7 +200,8 @@ func Ping(ctx context.Context, ep Endpoint, nt Notification) (Result, error) {
 		return Result{}, fmt.Errorf("notifykit: nothing is listening at %s (is the application running?): %w", ep.Socket, err)
 	}
 	defer func() { _ = conn.Close() }()
-	deadline := time.Now().Add(messageTimeout)
+	// Sending takes at most messageTimeout; the answer comes after the delivery.
+	deadline := time.Now().Add(messageTimeout + deliveryTimeout + messageTimeout)
 	if dl, ok := ctx.Deadline(); ok && dl.Before(deadline) {
 		deadline = dl
 	}
