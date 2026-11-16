@@ -268,7 +268,12 @@ func TestPingWaitsForASlowDelivery(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- n.Listen(ctx) }()
-	t.Cleanup(func() { cancel(); <-done })
+	t.Cleanup(func() {
+		cancel()
+		if err := <-done; err != nil {
+			t.Errorf("Listen: %v", err)
+		}
+	})
 	ep, _ := n.Endpoint()
 	for i := 0; i < 200; i++ {
 		if _, err := os.Stat(ep.TokenFile); err == nil {
