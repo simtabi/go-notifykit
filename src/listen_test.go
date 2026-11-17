@@ -241,3 +241,51 @@ func TestRunCLI(t *testing.T) {
 		t.Fatalf("doctor: %d %q", code, out)
 	}
 }
+
+// slowBackend takes longer than messageTimeout to deliver, as the macOS helper
+// can on a process's first send (building and registering the notifier app)
+// or while the permission prompt is up.
+type slowBackend struct {
+	Recorder
+	delay time.Duration
+}
+
+func (b *slowBackend) Send(ctx context.Context, nt Notification) error {
+	select {
+	case <-time.After(b.delay):
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	return b.Recorder.Send(ctx, nt)
+}
+
+func TestPingWaitsForASlowDelivery(t *testing.T) {
+	slow := &slowBackend{delay: messageTimeout + time.Second}
+	n, err := New(Config{AppName: "demo", StateDir: shortDir(t), Backend: slow})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- n.Listen(ctx) }()
+	t.Cleanup(func() {
+		cancel()
+		if err := <-done; err != nil {
+			t.Errorf("Listen: %v", err)
+		}
+	})
+	ep, _ := n.Endpoint()
+	for i := 0; i < 200; i++ {
+		if _, err := os.Stat(ep.TokenFile); err == nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	res, err := Ping(context.Background(), ep, Notification{Title: "slow"})
+	if err != nil {
+		t.Fatalf("a delivery slower than %s: %v", messageTimeout, err)
+	}
+	if res.Backend != "recorder" || len(slow.Sent()) != 1 {
+		t.Fatalf("%+v %d", res, len(slow.Sent()))
+	}
+}

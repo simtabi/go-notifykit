@@ -18,6 +18,13 @@ token-guarded local ping socket and a shared `notify` command.
   helper, then `osascript`, which macOS provides. A test fails if any automatic
   fallback names a program the app does not ship or the OS does not provide.
 
+### Fixed
+
+- **A ping waits for a slow delivery.** Five seconds covered reading the message, delivering it and answering, so a
+  ping to a process whose first macOS send was still building its notifier app (5 to 9 seconds from a launchd agent)
+  answered `no answer … i/o timeout` while the notification still showed. Each message still has five seconds; the
+  delivery now has up to a minute.
+
 ### Removed
 
 - **The `terminal-notifier` backend**, on the owner's decision of 2026-11-08

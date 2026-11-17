@@ -43,7 +43,9 @@ Unix socket paths are limited to about 100 bytes, so `Listen` refuses a longer p
 
 ## Wire format
 
-One line each way, UTF-8 JSON, at most 16 KiB, within five seconds.
+One line each way, UTF-8 JSON, at most 16 KiB. Each line is written within five seconds. The answer comes once the
+notification is delivered, which may take up to a minute: a process's first send on macOS builds and registers the
+notifier app before `Config.Timeout` starts, and the permission prompt may still be up.
 
 ```json
 {"token":"<64 hex>","notification":{"title":"Deploy finished","body":"billing-api is on v1.4.0","group":"deploy","level":0}}
