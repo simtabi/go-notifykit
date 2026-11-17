@@ -6,6 +6,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-16
+
+The first release. Desktop notifications for Go programs under the program's own name and icon
+(a macOS helper app, `notify-send`, a Windows toast), silent under tests and CI, with a
+token-guarded local ping socket and a shared `notify` command.
+
 ### Changed
 
 - **No third-party notifier is ever used.** On macOS the chain is the app's own
